@@ -1,0 +1,19 @@
+{
+  "name": "mizan-reputation-radar",
+  "version": "0.1.0",
+  "description": "Real-time reputation monitoring engine. Tracks mentions across news, social media, and web. Sentiment analysis, alert system, and trend visualization dashboard.",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "keywords": [
+    "moj",
+    "uae",
+    "justice",
+    "ai-tool"
+  ],
+  "author": "mizanuae10x",
+  "license": "MIT"
+}
