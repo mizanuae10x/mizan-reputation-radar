@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+anthropic
+tavily-python
+sqlalchemy
+aiosqlite
+greenlet
+reportlab
+python-multipart
+httpx
+apscheduler
+python-dotenv
+arabic-reshaper
+python-bidi
