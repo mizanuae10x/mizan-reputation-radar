@@ -1,0 +1,144 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: mizan-reputation-radar-api
+  AZURE_WEBAPP_PACKAGE_PATH: backend
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+  AZURE_SWA_NAME: mizan-reputation-radar
+
+jobs:
+  # ── Build & test frontend ──────────────────────────────────────────────────
+  build-frontend:
+    name: Build Next.js frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: |
+            .next/
+            public/
+            package.json
+            package-lock.json
+
+  # ── Build & test backend ───────────────────────────────────────────────────
+  build-backend:
+    name: Build FastAPI backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Smoke test (import check)
+        run: python -c "from backend.main import app; print('Backend import OK')"
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-build
+          path: backend/
+
+  # ── Deploy backend to Azure App Service ───────────────────────────────────
+  deploy-backend:
+    name: Deploy backend to Azure App Service
+    runs-on: ubuntu-latest
+    needs: build-backend
+    environment:
+      name: production
+      url: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: backend/
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+          startup-command: "python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+
+      - name: Set App Settings
+        uses: azure/appservice-settings@v1
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          app-settings-json: |
+            [
+              { "name": "ANTHROPIC_API_KEY", "value": "${{ secrets.ANTHROPIC_API_KEY }}", "slotSetting": false },
+              { "name": "TAVILY_API_KEY", "value": "${{ secrets.TAVILY_API_KEY }}", "slotSetting": false },
+              { "name": "DATABASE_URL", "value": "sqlite+aiosqlite:////home/site/wwwroot/radar.db", "slotSetting": false }
+            ]
+
+  # ── Deploy frontend to Azure Static Web Apps ──────────────────────────────
+  deploy-frontend:
+    name: Deploy frontend to Azure Static Web Apps
+    runs-on: ubuntu-latest
+    needs: [build-frontend, deploy-backend]
+    environment:
+      name: production
+      url: https://${{ env.AZURE_SWA_NAME }}.azurestaticapps.net
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for production
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net
+
+      - name: Deploy to Azure Static Web Apps
+        uses: azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: /
+          output_location: .next
