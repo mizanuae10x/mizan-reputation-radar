@@ -96,7 +96,7 @@ jobs:
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
-          startup-command: "python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+          startup-command: "python -m uvicorn main:app --host 0.0.0.0 --port 8000"
 
       - name: Set App Settings
         uses: azure/appservice-settings@v1
@@ -142,3 +142,4 @@ jobs:
           action: upload
           app_location: /
           output_location: .next
+
